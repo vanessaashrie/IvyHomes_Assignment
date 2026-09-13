@@ -101,6 +101,22 @@ function isLoggedIn() {
 // any 401 is worth one refresh attempt. If the refresh itself fails
 // (refresh token also expired/invalid), we clear auth and notify the
 // app so it can redirect to login, instead of surfacing a raw error.
+// Concurrent requests can hit a 401 at the same moment (e.g. a page that
+// loads its data AND a filter dropdown on mount). The refresh token ROTATES
+// on every use, so if two requests each independently call refreshAccessToken(),
+// the second one uses an already-invalidated refresh token and fails --
+// forcing a logout even though the first refresh actually succeeded.
+// Sharing one in-flight refresh promise across concurrent 401s fixes this.
+let refreshPromise = null;
+function refreshAccessTokenShared() {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 async function authRequest(path, options = {}) {
   const { accessToken } = getStoredAuth();
   const headers = { ...(options.headers || {}), Authorization: `Bearer ${accessToken}` };
@@ -111,7 +127,7 @@ async function authRequest(path, options = {}) {
     if (err.status !== 401) throw err;
 
     try {
-      await refreshAccessToken();
+      await refreshAccessTokenShared();
     } catch (refreshErr) {
       clearAuth();
       if (authFailureHandler) authFailureHandler();
@@ -190,6 +206,17 @@ async function fetchDistinctLocalities(fetchFn, cacheKey) {
   return localities;
 }
 
+// Cache the full dataset per endpoint so a search only pays the walk cost
+// once per session, not once per keystroke. Filtering itself happens
+// client-side and is effectively instant once cached.
+const fullDatasetCache = {};
+async function fetchFullDataset(fetchFn, cacheKey, onProgress) {
+  if (fullDatasetCache[cacheKey]) return fullDatasetCache[cacheKey];
+  const all = await fetchAllPages(fetchFn, {}, onProgress);
+  fullDatasetCache[cacheKey] = all;
+  return all;
+}
+
 export {
   login,
   logout,
@@ -208,4 +235,5 @@ export {
   unsaveListing,
   fetchAllPages,
   fetchDistinctLocalities,
+  fetchFullDataset,
 };

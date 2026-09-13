@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import * as api from "../api/client";
 
 const PAGE_SIZE = 50; // server hard-caps at this regardless of what we ask for
+const SEARCH_PAGE_SIZE = 30;
 
 function formatPrice(p) {
   if (p >= 10000000) return `₹${(p / 10000000).toFixed(2)} Cr`;
@@ -26,6 +27,33 @@ export default function Listings() {
     maxPrice: "",
     furnishing: "",
   });
+
+  // ---- Search: full-text over apartment name / locality / description,
+  // across the WHOLE dataset, not just the current page. Only kicks in
+  // once the user types something; otherwise normal server-paginated
+  // browsing (below) is used, which is cheaper for just scrolling around.
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchDataset, setSearchDataset] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchProgress, setSearchProgress] = useState({ done: 0, total: null });
+  const [searchPage, setSearchPage] = useState(0);
+
+  // debounce the search box so we don't refilter on every keystroke instantly
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => {
+    if (!searchQuery) return;
+    if (searchDataset) return; // already cached from a previous search this session
+    setSearchLoading(true);
+    api.fetchFullDataset(api.fetchListings, "listings", (done, tot) => setSearchProgress({ done, total: tot }))
+      .then(setSearchDataset)
+      .catch((err) => setError(err.message))
+      .finally(() => setSearchLoading(false));
+  }, [searchQuery, searchDataset]);
 
   useEffect(() => {
     api.fetchDistinctLocalities(api.fetchListings, "listings").then(setLocalities).catch(() => {});
@@ -57,13 +85,13 @@ export default function Listings() {
   }, [filters]);
 
   useEffect(() => {
+    if (searchQuery) return; // search mode handles its own data
     loadPage(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
+  }, [filters, searchQuery]);
 
-  // Client-side re-filter as a safety net: some filters may be silently
-  // ignored server-side (see findings). We re-apply them locally so the UI
-  // is correct even if the server didn't actually filter.
+  // Client-side re-filter as a safety net for normal browsing: some filters
+  // may be silently ignored server-side (see findings).
   const visibleListings = rawListings.filter((l) => {
     if (filters.locality && l.locality !== filters.locality) return false;
     if (filters.bhk && l.bedroom !== Number(filters.bhk)) return false;
@@ -73,11 +101,37 @@ export default function Listings() {
     return true;
   });
 
+  // Search results: full-dataset text match + the same filters applied.
+  const searchResults = useMemo(() => {
+    if (!searchQuery || !searchDataset) return [];
+    const q = searchQuery.toLowerCase();
+    return searchDataset.filter((l) => {
+      const haystack = `${l.apartment_name || ""} ${l.locality || ""} ${l.description || ""}`.toLowerCase();
+      if (!haystack.includes(q)) return false;
+      if (filters.locality && l.locality !== filters.locality) return false;
+      if (filters.bhk && l.bedroom !== Number(filters.bhk)) return false;
+      if (filters.furnishing && l.furnishing !== filters.furnishing) return false;
+      if (filters.minPrice && l.price < Number(filters.minPrice)) return false;
+      if (filters.maxPrice && l.price > Number(filters.maxPrice)) return false;
+      return true;
+    });
+  }, [searchQuery, searchDataset, filters]);
+
+  useEffect(() => { setSearchPage(0); }, [searchQuery, filters]);
+
+  const isSearchMode = Boolean(searchQuery);
+  const searchPageItems = searchResults.slice(searchPage * SEARCH_PAGE_SIZE, (searchPage + 1) * SEARCH_PAGE_SIZE);
+
   return (
     <div className="page">
       <h1>Listings</h1>
 
       <div className="filter-bar">
+        <input
+          placeholder="Search by name, locality, or description…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+        />
         <select
           value={filters.locality}
           onChange={(e) => setFilters((f) => ({ ...f, locality: e.target.value }))}
@@ -120,7 +174,43 @@ export default function Listings() {
       </div>
 
       {error && <div className="error-text">{error}</div>}
-      {loading ? (
+
+      {isSearchMode ? (
+        searchLoading ? (
+          <div className="loading">
+            Searching the full dataset… {searchProgress.done}
+            {searchProgress.total ? ` / ${searchProgress.total}` : ""} loaded
+          </div>
+        ) : (
+          <>
+            <p className="result-count">
+              {searchResults.length} match{searchResults.length === 1 ? "" : "es"} for "{searchQuery}"
+            </p>
+            <div className="card-grid">
+              {searchPageItems.map((l) => (
+                <Link to={`/listings/${l.listing_id}`} key={l.listing_id} className="listing-card">
+                  <div className="listing-card-title">{l.apartment_name}</div>
+                  <div className="listing-card-sub">{l.locality} · {l.bedroom} BHK · {l.property_type}</div>
+                  <div className="listing-card-price">{formatPrice(l.price)}</div>
+                  <div className="listing-card-meta">{l.carpet_area} sqft carpet · {l.furnishing}</div>
+                </Link>
+              ))}
+            </div>
+            {searchResults.length > SEARCH_PAGE_SIZE && (
+              <div className="pagination">
+                <button disabled={searchPage === 0} onClick={() => setSearchPage((p) => p - 1)}>Previous</button>
+                <span>Page {searchPage + 1} of {Math.ceil(searchResults.length / SEARCH_PAGE_SIZE)}</span>
+                <button
+                  disabled={(searchPage + 1) * SEARCH_PAGE_SIZE >= searchResults.length}
+                  onClick={() => setSearchPage((p) => p + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
+        )
+      ) : loading ? (
         <div className="loading">Loading listings…</div>
       ) : (
         <>
