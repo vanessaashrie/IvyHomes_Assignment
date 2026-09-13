@@ -217,6 +217,23 @@ async function fetchFullDataset(fetchFn, cacheKey, onProgress) {
   return all;
 }
 
+// The server's declared `total` on these endpoints undercounts what's
+// actually retrievable by ~9% (a confirmed finding -- see README). That
+// means a walk-in-progress counter can legitimately pass the declared
+// total before finishing, which looks like a bug if displayed naively
+// (e.g. "4500 / 4305" or "104%"). This formats it so that's clear instead
+// of alarming.
+function formatWalkProgress(done, declaredTotal) {
+  if (!declaredTotal) return `${done} loaded`;
+  if (done <= declaredTotal) {
+    const pct = Math.round((done / declaredTotal) * 100);
+    return `${done} / ${declaredTotal} loaded (${pct}%)`;
+  }
+  // We've already passed the server's declared total -- expected, given
+  // the known undercount. Don't show a >100% figure.
+  return `${done} loaded (server's declared total of ${declaredTotal} was already exceeded -- known API quirk)`;
+}
+
 export {
   login,
   logout,
@@ -236,4 +253,5 @@ export {
   fetchAllPages,
   fetchDistinctLocalities,
   fetchFullDataset,
+  formatWalkProgress,
 };

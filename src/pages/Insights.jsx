@@ -92,13 +92,11 @@ export default function Insights() {
   if (error) return <div className="page"><div className="error-text">{error}</div></div>;
 
   if (!stats) {
-    const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
     return (
       <div className="page">
         <h1>Insights</h1>
         <div className="loading">
-          Building insights from the live dataset… {progress.done}
-          {progress.total ? ` / ${progress.total}` : ""} listings loaded ({pct}%)
+          Building insights from the live dataset… {api.formatWalkProgress(progress.done, progress.total)}
         </div>
         <p className="insight-note">
           There's no analytics endpoint on this API despite what the docs promise —

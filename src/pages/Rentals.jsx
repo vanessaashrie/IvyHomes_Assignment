@@ -71,7 +71,11 @@ export default function Rentals() {
     if (!searchQuery || !searchDataset) return [];
     const q = searchQuery.toLowerCase();
     return searchDataset.filter((r) => {
-      const haystack = `${r.apartment_name || ""} ${r.locality || ""} ${r.title || ""} ${r.description || ""}`.toLowerCase();
+      // NOTE: deliberately excludes r.title -- title and locality can
+      // disagree on this dataset (e.g. a listing titled "for rent in
+      // Bellandur" whose actual locality field is "whitefield"), and
+      // matching against it produces confusing cross-locality results.
+      const haystack = `${r.apartment_name || ""} ${r.locality || ""} ${r.description || ""}`.toLowerCase();
       if (!haystack.includes(q)) return false;
       if (locality && r.locality !== locality) return false;
       return true;
@@ -104,8 +108,7 @@ export default function Rentals() {
       {isSearchMode ? (
         searchLoading ? (
           <div className="loading">
-            Searching the full dataset… {searchProgress.done}
-            {searchProgress.total ? ` / ${searchProgress.total}` : ""} loaded
+            Searching the full dataset… {api.formatWalkProgress(searchProgress.done, searchProgress.total)}
           </div>
         ) : (
           <>

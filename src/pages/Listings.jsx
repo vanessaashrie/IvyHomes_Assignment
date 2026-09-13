@@ -178,8 +178,7 @@ export default function Listings() {
       {isSearchMode ? (
         searchLoading ? (
           <div className="loading">
-            Searching the full dataset… {searchProgress.done}
-            {searchProgress.total ? ` / ${searchProgress.total}` : ""} loaded
+            Searching the full dataset… {api.formatWalkProgress(searchProgress.done, searchProgress.total)}
           </div>
         ) : (
           <>
