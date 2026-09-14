@@ -230,7 +230,7 @@ export default function Listings() {
             <button disabled={offset === 0} onClick={() => loadPage(Math.max(0, offset - PAGE_SIZE))}>
               Previous
             </button>
-            <span>Offset {offset}</span>
+            <span>Page {Math.floor(offset / PAGE_SIZE) + 1}{total ? ` of ${Math.ceil(total / PAGE_SIZE)}` : ""}</span>
             <button disabled={!hasMore} onClick={() => loadPage(offset + rawListings.length)}>
               Next
             </button>

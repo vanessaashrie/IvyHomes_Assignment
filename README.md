@@ -31,7 +31,6 @@ investigative work behind the 10 answers and the findings list, kept so the
 process is reproducible and reviewable, not just asserted in prose.
 
 ## How to run the frontend
-
 ```bash
 npm install
 cp .env.example .env   # already filled in with the assigned API key
@@ -62,7 +61,7 @@ I started by hitting every documented endpoint literally as written and
 reading the error bodies — the API's errors are genuinely well-written and
 told me immediately what was wrong (e.g. "send your key in the X-API-Key
 request header, not as a query parameter"). That got me past the immediately
-obvious lies (auth, response field names).
+obvious bugs. (auth, response field names).
 
 The harder ones didn't show up in any single response. I formed and tested
 specific hypotheses:
